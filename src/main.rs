@@ -6,6 +6,7 @@ use std::path::Path;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use bytes::Bytes;
+use image::{ImageBuffer, GenericImageView, DynamicImage, ImageEncoder};
 
 const PTRESPACK_META_URL: &str = "https://pgres4pt.realtvop.top";
 
@@ -143,6 +144,45 @@ struct DownloadResult {
     content: Bytes,
 }
 
+fn hit_fx_convector(image_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img = image::load_from_memory(image_data)?;
+    
+    let orig_width = img.width();
+    let orig_height = img.height();
+    
+    let frame_width = orig_width;
+    let frame_height = orig_height / 30;
+    
+    let new_width = frame_width * 5;
+    let new_height = frame_height * 6;
+
+    let mut new_image = ImageBuffer::new(new_width, new_height);
+    
+    for i in 0..30 {
+        let old_y = (i as u32) * frame_height;
+        
+        let new_x = ((i as u32) % 5) * frame_width;
+        let new_y = ((i as u32) / 5) * frame_height;
+
+        for y in 0..frame_height {
+            for x in 0..frame_width {
+                let pixel = img.get_pixel(x, old_y + y);
+                new_image.put_pixel(new_x + x, new_y + y, pixel);
+            }
+        }
+    }
+
+    let mut output = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut output);
+    encoder.write_image(
+        new_image.as_raw(),
+        new_width,
+        new_height,
+        image::ColorType::Rgba8
+    )?;
+    Ok(output)
+}
+
 async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<DownloadResult>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let mut downloaded = Vec::new();
@@ -153,7 +193,6 @@ async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<Download
             res_type,
             content: bytes,
         });
-        println!("Downloaded: {}", url);
     }
 
     Ok(downloaded)
@@ -165,8 +204,17 @@ async fn save_res(downloads: Vec<DownloadResult>) -> Result<(), Box<dyn std::err
     for res in downloads {
         let filename = get_filename(&res.res_type);
         let filepath = Path::new("output").join(filename);
-        save_file(&filepath, res.content).await?;
-        println!("Saved: {}", filepath.display());
+        
+        match res.res_type {
+            ResType::Image(ImageResType::HitFX) => {
+                let processed_data = hit_fx_convector(&res.content)?;
+                save_file(&filepath, Bytes::from(processed_data)).await?;
+            },
+            _ => {
+                save_file(&filepath, res.content).await?;
+            }
+        }
+        // println!("Saved: {}", filepath.display());
     }
 
     Ok(())
@@ -223,9 +271,9 @@ fn main() {
     
     match runtime.block_on(fetch_meta(PTRESPACK_META_URL)) {
         Ok(meta) => {
-            println!("Fetched metadata:\n{:#?}", meta);
+            // println!("Fetched metadata:\n{:#?}", meta);
             let res_urls = res_name_parser(&meta.res);
-            println!("Parsed res names:\n{:#?}", &res_urls);
+            // println!("Parsed res names:\n{:#?}", &res_urls);
             
             match runtime.block_on(download_res(res_urls)) {
                 Ok(downloaded) => {
