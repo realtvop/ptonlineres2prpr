@@ -2,6 +2,8 @@ use reqwest::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
 
+const PTRESPACK_META_URL: &str = "https://pgres4pt.realtvop.top";
+
 #[derive(Debug, Deserialize)]
 struct PTRespackMeta {
     name: String,
@@ -51,7 +53,9 @@ fn res_name_parser(res: &HashMap<String, String>) -> HashMap::<ResType, String> 
     let mut res_urls = HashMap::<ResType, String>::new();
     for (i, url) in res {
         let i_lowercase = i.to_lowercase();
-        if ["tap", "tap.png"].contains(&i_lowercase.as_str()) {
+        if ["clickraw", "clickraw.png"].contains(&i_lowercase.as_str()) {
+            res_urls.insert(ResType::Image(ImageResType::HitFX), url.clone());
+        } else if ["tap", "tap.png"].contains(&i_lowercase.as_str()) {
             res_urls.insert(ResType::Image(ImageResType::Tap), url.clone());
         } else if ["taphl", "taphl.png"].contains(&i_lowercase.as_str()) {
             res_urls.insert(ResType::Image(ImageResType::TapHL), url.clone());
@@ -84,10 +88,12 @@ fn res_name_parser(res: &HashMap<String, String>) -> HashMap::<ResType, String> 
     res_urls
 }
 
+
+
 fn main() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     
-    match runtime.block_on(fetch_meta("https://pgres4pt.realtvop.top")) {
+    match runtime.block_on(fetch_meta(PTRESPACK_META_URL)) {
         Ok(meta) => {
             println!("Fetched metadata:\n{:#?}", meta);
             // res_name_parser(&meta.res);
