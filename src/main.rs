@@ -130,11 +130,7 @@ fn get_filename(res_type: &ResType) -> &'static str {
             ImageResType::CombinedHold => "hold.png",
             ImageResType::CombinedHoldHL => "hold_mh.png",
             
-            ImageResType::HoldEnd => "",//"holdend.png",
-            ImageResType::Hold => "",//"hold.png",
-            ImageResType::HoldHL => "",//"holdhl.png",
-            ImageResType::HoldHead => "",//"holdhead.png",
-            ImageResType::HoldHeadHL => "",//"holdheadhl.png",
+            _ => "",
         },
         ResType::Audio(audio_type) => match audio_type {
             AudioResType::TapHitSound => "click.ogg",
