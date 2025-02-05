@@ -1,5 +1,5 @@
 use reqwest::Error;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -243,7 +243,7 @@ async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<Download
     Ok(downloaded)
 }
 
-async fn save_res(downloads: Vec<DownloadResult>) -> Result<(), Box<dyn std::error::Error>> {
+async fn save_res(downloads: Vec<DownloadResult>, meta: PTRespackMeta) -> Result<(), Box<dyn std::error::Error>> {
     ensure_directories().await?;
 
     let mut hold_components = HashMap::new();
@@ -296,17 +296,24 @@ async fn save_res(downloads: Vec<DownloadResult>) -> Result<(), Box<dyn std::err
         ).await?;
     }
 
+    let res_info = generate_respack_info(meta, &hold_components)?;
+    let yaml = serde_yaml::to_string(&res_info)?;
+    save_file(
+        &Path::new("output").join("info.yml"),
+        Bytes::from(yaml.into_bytes())
+    ).await?;
+
     Ok(())
 }
 
-#[derive(Deserialize)]
-// #[serde(rename_all = "camelCase")]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 // from prpr/src/core/resource.rs, may be replaced in the future
 struct ResPackInfo {
     name: String,
     author: String,
 
-    // hit_fx: (u32, u32),
+    hit_fx: (u32, u32),
     // #[serde(default = "default_duration")]
     // hit_fx_duration: f32,
     // #[serde(default = "default_scale")]
@@ -318,9 +325,9 @@ struct ResPackInfo {
     // #[serde(default = "default_tinted")]
     // hit_fx_tinted: bool,
 
-    // hold_atlas: (u32, u32),
-    // #[serde(rename = "holdAtlasMH")]
-    // hold_atlas_mh: (u32, u32),
+    hold_atlas: (u32, u32),
+    #[serde(rename = "holdAtlasMH")]
+    hold_atlas_mh: (u32, u32),
 
     // #[serde(default)]
     // hold_keep_head: bool,
@@ -337,12 +344,38 @@ struct ResPackInfo {
     // #[serde(default)]
     description: String,
 }
-fn generate_respack_info(meta: PTRespackMeta) -> ResPackInfo {
-    ResPackInfo {
+
+fn get_image_dimensions(data: &[u8]) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+    let img = image::load_from_memory(data)?;
+    Ok((img.width(), img.height()))
+}
+
+fn generate_respack_info(meta: PTRespackMeta, hold_components: &HashMap<ImageResType, Bytes>) -> Result<ResPackInfo, Box<dyn std::error::Error>> {
+    let (_, end_height) = hold_components.get(&ImageResType::HoldEnd)
+        .map(|data| get_image_dimensions(data))
+        .transpose()?
+        .unwrap_or((0, 0));
+    
+    let (_, head_height) = hold_components.get(&ImageResType::HoldHead)
+        .map(|data| get_image_dimensions(data))
+        .transpose()?
+        .unwrap_or((0, 0));
+        
+    let (_, head_hl_height) = hold_components.get(&ImageResType::HoldHeadHL)
+        .map(|data| get_image_dimensions(data))
+        .transpose()?
+        .unwrap_or((0, 0));
+
+    let hit_fx = (5, 6);
+
+    Ok(ResPackInfo {
         name: meta.name,
         author: meta.author,
+        hit_fx,
+        hold_atlas: (end_height, head_height),
+        hold_atlas_mh: (end_height, head_hl_height),
         description: String::new(),
-    }
+    })
 }
 
 fn main() {
@@ -350,13 +383,11 @@ fn main() {
     
     match runtime.block_on(fetch_meta(PTRESPACK_META_URL)) {
         Ok(meta) => {
-            // println!("Fetched metadata:\n{:#?}", meta);
             let res_urls = res_name_parser(&meta.res);
-            // println!("Parsed res names:\n{:#?}", &res_urls);
             
             match runtime.block_on(download_res(res_urls)) {
                 Ok(downloaded) => {
-                    if let Err(e) = runtime.block_on(save_res(downloaded)) {
+                    if let Err(e) = runtime.block_on(save_res(downloaded, meta)) {
                         eprintln!("Error saving resources: {}", e);
                     }
                 }
