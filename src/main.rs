@@ -313,40 +313,19 @@ async fn save_res(downloads: Vec<DownloadResult>, meta: PTRespackMeta) -> Result
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-// from prpr/src/core/resource.rs, may be replaced in the future
 struct ResPackInfo {
     name: String,
     author: String,
 
-    hit_fx: (u32, u32),
-    // #[serde(default = "default_duration")]
-    // hit_fx_duration: f32,
-    // #[serde(default = "default_scale")]
-    // hit_fx_scale: f32,
-    // #[serde(default)]
-    // hit_fx_rotate: bool,
-    // #[serde(default)]
-    // hide_particles: bool,
-    // #[serde(default = "default_tinted")]
-    // hit_fx_tinted: bool,
-
-    hold_atlas: (u32, u32),
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hit_fx: Option<(u32, u32)>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hold_atlas: Option<(u32, u32)>,
     #[serde(rename = "holdAtlasMH")]
-    hold_atlas_mh: (u32, u32),
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hold_atlas_mh: Option<(u32, u32)>,
 
-    // #[serde(default)]
-    // hold_keep_head: bool,
-    // #[serde(default)]
-    // hold_repeat: bool,
-    // #[serde(default)]
-    // hold_compact: bool,
-
-    // #[serde(default = "default_perfect")]
-    // color_perfect: u32,
-    // #[serde(default = "default_good")]
-    // color_good: u32,
-
-    // #[serde(default)]
     description: String,
 }
 
@@ -356,29 +335,30 @@ fn get_image_dimensions(data: &[u8]) -> Result<(u32, u32), Box<dyn std::error::E
 }
 
 fn generate_respack_info(meta: PTRespackMeta, hold_components: &HashMap<ImageResType, Bytes>) -> Result<ResPackInfo, Box<dyn std::error::Error>> {
-    let (_, end_height) = hold_components.get(&ImageResType::HoldEnd)
-        .map(|data| get_image_dimensions(data))
-        .transpose()?
-        .unwrap_or((0, 0));
-    
-    let (_, head_height) = hold_components.get(&ImageResType::HoldHead)
-        .map(|data| get_image_dimensions(data))
-        .transpose()?
-        .unwrap_or((0, 0));
-        
-    let (_, head_hl_height) = hold_components.get(&ImageResType::HoldHeadHL)
-        .map(|data| get_image_dimensions(data))
-        .transpose()?
-        .unwrap_or((0, 0));
+    let hold_atlas = if hold_components.contains_key(&ImageResType::HoldEnd) 
+        && hold_components.contains_key(&ImageResType::HoldHead) {
+        let (_, end_height) = get_image_dimensions(hold_components.get(&ImageResType::HoldEnd).unwrap())?;
+        let (_, head_height) = get_image_dimensions(hold_components.get(&ImageResType::HoldHead).unwrap())?;
+        Some((end_height, head_height))
+    } else {
+        None
+    };
 
-    let hit_fx = (5, 6);
+    let hold_atlas_mh = if hold_components.contains_key(&ImageResType::HoldEnd) 
+        && hold_components.contains_key(&ImageResType::HoldHeadHL) {
+        let (_, end_height) = get_image_dimensions(hold_components.get(&ImageResType::HoldEnd).unwrap())?;
+        let (_, head_hl_height) = get_image_dimensions(hold_components.get(&ImageResType::HoldHeadHL).unwrap())?;
+        Some((end_height, head_hl_height))
+    } else {
+        None
+    };
 
     Ok(ResPackInfo {
         name: meta.name,
         author: meta.author,
-        hit_fx,
-        hold_atlas: (end_height, head_height),
-        hold_atlas_mh: (end_height, head_hl_height),
+        hit_fx: if hold_components.contains_key(&ImageResType::HitFX) { Some((5, 6)) } else { None },
+        hold_atlas,
+        hold_atlas_mh,
         description: String::new(),
     })
 }
