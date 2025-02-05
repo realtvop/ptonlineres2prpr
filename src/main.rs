@@ -101,8 +101,12 @@ fn res_name_parser(res: &HashMap<String, String>) -> HashMap<ResType, String> {
     res_urls
 }
 
-async fn ensure_directories() -> std::io::Result<()> {
-    fs::create_dir_all("output")?;
+fn get_output_dir(name: &str) -> std::path::PathBuf {
+    Path::new("output").join(name)
+}
+
+async fn ensure_directories(name: &str) -> std::io::Result<()> {
+    fs::create_dir_all(get_output_dir(name))?;
     Ok(())
 }
 
@@ -245,13 +249,13 @@ async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<Download
 }
 
 async fn save_res(downloads: Vec<DownloadResult>, meta: PTRespackMeta) -> Result<(), Box<dyn std::error::Error>> {
-    ensure_directories().await?;
-
+    ensure_directories(&meta.name).await?;
+    let output_dir = get_output_dir(&meta.name);
     let mut hold_components = HashMap::new();
 
     for res in &downloads {
         let filename = get_filename(&res.res_type);
-        let filepath = Path::new("output").join(filename);
+        let filepath = output_dir.join(filename);
         
         match &res.res_type {
             ResType::Image(ImageResType::HitFX) => {
@@ -280,7 +284,7 @@ async fn save_res(downloads: Vec<DownloadResult>, meta: PTRespackMeta) -> Result
     ) {
         let combined = combine_hold_images(end, hold, head)?;
         save_file(
-            &Path::new("output").join(get_filename(&ResType::Image(ImageResType::CombinedHold))),
+            &output_dir.join(get_filename(&ResType::Image(ImageResType::CombinedHold))),
             Bytes::from(combined)
         ).await?;
     }
@@ -292,7 +296,7 @@ async fn save_res(downloads: Vec<DownloadResult>, meta: PTRespackMeta) -> Result
     ) {
         let combined = combine_hold_images(end, hold, head)?;
         save_file(
-            &Path::new("output").join(get_filename(&ResType::Image(ImageResType::CombinedHoldHL))),
+            &output_dir.join(get_filename(&ResType::Image(ImageResType::CombinedHoldHL))),
             Bytes::from(combined)
         ).await?;
     }
@@ -300,7 +304,7 @@ async fn save_res(downloads: Vec<DownloadResult>, meta: PTRespackMeta) -> Result
     let res_info = generate_respack_info(meta, &hold_components)?;
     let yaml = serde_yaml::to_string(&res_info)?;
     save_file(
-        &Path::new("output").join("info.yml"),
+        &output_dir.join("info.yml"),
         Bytes::from(yaml.into_bytes())
     ).await?;
 
