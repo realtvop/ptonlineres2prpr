@@ -7,8 +7,9 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use bytes::Bytes;
 use image::{ImageBuffer, GenericImageView, DynamicImage, ImageEncoder};
+use std::env;
 
-const PTRESPACK_META_URL: &str = "https://pgres4pt.realtvop.top";
+const PTRESPACK_META_URL: &str = "https://pgres4pt.realtvop.top/fish";
 
 #[derive(Debug, Deserialize)]
 struct PTRespackMeta {
@@ -378,22 +379,24 @@ fn generate_respack_info(meta: PTRespackMeta, hold_components: &HashMap<ImageRes
     })
 }
 
+pub async fn load_pt_online_respack(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let meta = fetch_meta(url).await?;
+    let res_urls = res_name_parser(&meta.res);
+    let downloaded = download_res(res_urls).await?;
+    save_res(downloaded, meta).await?;
+    Ok(())
+}
+
 fn main() {
+    let url = env::args().nth(1).unwrap_or_else(|| {
+        eprintln!("Usage: ptonlineres2prpr <url>");
+        eprintln!("No URL provided, using example: {}", PTRESPACK_META_URL);
+        PTRESPACK_META_URL.to_string()
+    });
+
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     
-    match runtime.block_on(fetch_meta(PTRESPACK_META_URL)) {
-        Ok(meta) => {
-            let res_urls = res_name_parser(&meta.res);
-            
-            match runtime.block_on(download_res(res_urls)) {
-                Ok(downloaded) => {
-                    if let Err(e) = runtime.block_on(save_res(downloaded, meta)) {
-                        eprintln!("Error saving resources: {}", e);
-                    }
-                }
-                Err(e) => eprintln!("Error downloading resources: {}", e),
-            }
-        },
-        Err(e) => eprintln!("Error occurred: {}", e),
+    if let Err(e) = runtime.block_on(load_pt_online_respack(&url)) {
+        eprintln!("Error occurred: {}", e);
     }
 }
