@@ -39,6 +39,8 @@ enum ImageResType {
     HoldHL,
     HoldHead,
     HoldHeadHL,
+    CombinedHold,
+    CombinedHoldHL,
     Drag,
     DragHL,
     Flick,
@@ -121,20 +123,23 @@ fn get_filename(res_type: &ResType) -> &'static str {
             ImageResType::HitFX => "hit_fx.png",
             ImageResType::Tap => "click.png",
             ImageResType::TapHL => "click_mh.png",
-            ImageResType::HoldEnd => "holdend.png",
-            ImageResType::Hold => "hold.png",
-            ImageResType::HoldHL => "holdhl.png",
-            ImageResType::HoldHead => "holdhead.png",
-            ImageResType::HoldHeadHL => "holdheadhl.png",
             ImageResType::Drag => "drag.png",
-            ImageResType::DragHL => "draghl.png",
+            ImageResType::DragHL => "drag_mh.png",
             ImageResType::Flick => "flick.png",
-            ImageResType::FlickHL => "flickhl.png",
+            ImageResType::FlickHL => "flick_mh.png",
+            ImageResType::CombinedHold => "hold.png",
+            ImageResType::CombinedHoldHL => "hold_mh.png",
+            
+            ImageResType::HoldEnd => "",//"holdend.png",
+            ImageResType::Hold => "",//"hold.png",
+            ImageResType::HoldHL => "",//"holdhl.png",
+            ImageResType::HoldHead => "",//"holdhead.png",
+            ImageResType::HoldHeadHL => "",//"holdheadhl.png",
         },
         ResType::Audio(audio_type) => match audio_type {
-            AudioResType::TapHitSound => "hitsong0.ogg",
-            AudioResType::DragHitSound => "hitsong1.ogg",
-            AudioResType::FlickHitSound => "hitsong2.ogg",
+            AudioResType::TapHitSound => "click.ogg",
+            AudioResType::DragHitSound => "drag.ogg",
+            AudioResType::FlickHitSound => "flick.ogg",
         },
     }
 }
@@ -183,6 +188,50 @@ fn hit_fx_convector(image_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Er
     Ok(output)
 }
 
+fn combine_hold_images(holdend: &[u8], hold: &[u8], holdhead: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let end_img = image::load_from_memory(holdend)?;
+    let hold_img = image::load_from_memory(hold)?;
+    let head_img = image::load_from_memory(holdhead)?;
+
+    let width = end_img.width().max(hold_img.width()).max(head_img.width());
+    let height = end_img.height() + hold_img.height() + head_img.height();
+
+    let mut combined = ImageBuffer::new(width, height);
+
+    let x_offset = (width - end_img.width()) / 2;
+    for y in 0..end_img.height() {
+        for x in 0..end_img.width() {
+            combined.put_pixel(x_offset + x, y, end_img.get_pixel(x, y));
+        }
+    }
+
+    let x_offset = (width - hold_img.width()) / 2;
+    let y_offset = end_img.height();
+    for y in 0..hold_img.height() {
+        for x in 0..hold_img.width() {
+            combined.put_pixel(x_offset + x, y_offset + y, hold_img.get_pixel(x, y));
+        }
+    }
+
+    let x_offset = (width - head_img.width()) / 2;
+    let y_offset = end_img.height() + hold_img.height();
+    for y in 0..head_img.height() {
+        for x in 0..head_img.width() {
+            combined.put_pixel(x_offset + x, y_offset + y, head_img.get_pixel(x, y));
+        }
+    }
+
+    let mut output = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut output);
+    encoder.write_image(
+        combined.as_raw(),
+        width,
+        height,
+        image::ColorType::Rgba8
+    )?;
+    Ok(output)
+}
+
 async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<DownloadResult>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let mut downloaded = Vec::new();
@@ -201,20 +250,54 @@ async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<Download
 async fn save_res(downloads: Vec<DownloadResult>) -> Result<(), Box<dyn std::error::Error>> {
     ensure_directories().await?;
 
-    for res in downloads {
+    let mut hold_components = HashMap::new();
+
+    for res in &downloads {
         let filename = get_filename(&res.res_type);
         let filepath = Path::new("output").join(filename);
         
-        match res.res_type {
+        match &res.res_type {
             ResType::Image(ImageResType::HitFX) => {
                 let processed_data = hit_fx_convector(&res.content)?;
                 save_file(&filepath, Bytes::from(processed_data)).await?;
             },
+            ResType::Image(img_type) => {
+                match img_type {
+                    ImageResType::HoldEnd | ImageResType::Hold | ImageResType::HoldHead |
+                    ImageResType::HoldHL | ImageResType::HoldHeadHL => {
+                        hold_components.insert(img_type.clone(), res.content.clone());
+                    },
+                    _ => { save_file(&filepath, res.content.clone()).await? },
+                }
+            },
             _ => {
-                save_file(&filepath, res.content).await?;
+                save_file(&filepath, res.content.clone()).await?;
             }
         }
-        // println!("Saved: {}", filepath.display());
+    }
+
+    if let (Some(end), Some(hold), Some(head)) = (
+        hold_components.get(&ImageResType::HoldEnd),
+        hold_components.get(&ImageResType::Hold),
+        hold_components.get(&ImageResType::HoldHead)
+    ) {
+        let combined = combine_hold_images(end, hold, head)?;
+        save_file(
+            &Path::new("output").join(get_filename(&ResType::Image(ImageResType::CombinedHold))),
+            Bytes::from(combined)
+        ).await?;
+    }
+
+    if let (Some(end), Some(hold), Some(head)) = (
+        hold_components.get(&ImageResType::HoldEnd),
+        hold_components.get(&ImageResType::HoldHL),
+        hold_components.get(&ImageResType::HoldHeadHL)
+    ) {
+        let combined = combine_hold_images(end, hold, head)?;
+        save_file(
+            &Path::new("output").join(get_filename(&ResType::Image(ImageResType::CombinedHoldHL))),
+            Bytes::from(combined)
+        ).await?;
     }
 
     Ok(())
