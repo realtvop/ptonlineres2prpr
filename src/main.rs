@@ -23,7 +23,7 @@ async fn fetch_meta(url: &str) -> Result<PTRespackMeta, Error> {
     Ok(meta)
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 enum ImageResType {
     HitFX,
     Tap,
@@ -38,52 +38,54 @@ enum ImageResType {
     Flick,
     FlickHL,
 }
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 enum AudioResType {
     TapHitSound,
     DragHitSound,
     FlickHitSound,
 }
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 enum ResType {
     Image(ImageResType),
     Audio(AudioResType),
 }
-fn res_name_parser(res: &HashMap<String, String>) -> HashMap::<ResType, String> {
-    let mut res_urls = HashMap::<ResType, String>::new();
+const IMAGE_RES_MAPPINGS: [(&[&str], ImageResType); 12] = [
+    (&["clickraw", "clickraw.png"], ImageResType::HitFX),
+    (&["tap", "tap.png"], ImageResType::Tap),
+    (&["taphl", "taphl.png"], ImageResType::TapHL),
+    (&["holdend", "holdend.png"], ImageResType::HoldEnd),
+    (&["hold", "hold.png"], ImageResType::Hold),
+    (&["holdhl", "holdhl.png"], ImageResType::HoldHL),
+    (&["holdhead", "holdhead.png"], ImageResType::HoldHead),
+    (&["holdheadhl", "holdheadhl.png"], ImageResType::HoldHeadHL),
+    (&["drag", "drag.png"], ImageResType::Drag),
+    (&["draghl", "draghl.png"], ImageResType::DragHL),
+    (&["flick", "flick.png"], ImageResType::Flick),
+    (&["flickhl", "flickhl.png"], ImageResType::FlickHL),
+];
 
-    for (i, url) in res {
-        let i_lowercase = i.to_lowercase();
-        if ["clickraw", "clickraw.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::HitFX), url.clone());
-        } else if ["tap", "tap.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::Tap), url.clone());
-        } else if ["taphl", "taphl.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::TapHL), url.clone());
-        } else if ["holdend", "holdend.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::HoldEnd), url.clone());
-        } else if ["hold", "hold.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::Hold), url.clone());
-        } else if ["holdhl", "holdhl.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::HoldHL), url.clone());
-        } else if ["holdhead", "holdhead.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::HoldHead), url.clone());
-        } else if ["holdheadhl", "holdheadhl.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::HoldHeadHL), url.clone());
-        } else if ["drag", "drag.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::Drag), url.clone());
-        } else if ["draghl", "draghl.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::DragHL), url.clone());
-        } else if ["flick", "flick.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::Flick), url.clone());
-        } else if ["flickhl", "flickhl.png"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Image(ImageResType::FlickHL), url.clone());
-        } else if ["hitsong0", "hitsong0.ogg"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Audio(AudioResType::TapHitSound), url.clone());
-        } else if ["hitsong1", "hitsong1.ogg"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Audio(AudioResType::DragHitSound), url.clone());
-        } else if ["hitsong2", "hitsong2.ogg"].contains(&i_lowercase.as_str()) {
-            res_urls.insert(ResType::Audio(AudioResType::FlickHitSound), url.clone());
+const AUDIO_RES_MAPPINGS: [(&[&str], AudioResType); 3] = [
+    (&["hitsong0", "hitsong0.ogg"], AudioResType::TapHitSound),
+    (&["hitsong1", "hitsong1.ogg"], AudioResType::DragHitSound),
+    (&["hitsong2", "hitsong2.ogg"], AudioResType::FlickHitSound),
+];
+
+fn res_name_parser(res: &HashMap<String, String>) -> HashMap<ResType, String> {
+    let mut res_urls = HashMap::<ResType, String>::new();
+    
+    for (name, url) in res {
+        let name_lower = name.to_lowercase();
+        
+        if let Some((_, img_type)) = IMAGE_RES_MAPPINGS
+            .iter()
+            .find(|(names, _)| names.contains(&name_lower.as_str())) {
+            res_urls.insert(ResType::Image(img_type.clone()), url.clone());
+        }
+        
+        if let Some((_, audio_type)) = AUDIO_RES_MAPPINGS
+            .iter()
+            .find(|(names, _)| names.contains(&name_lower.as_str())) {
+            res_urls.insert(ResType::Audio(audio_type.clone()), url.clone());
         }
     }
 
@@ -91,7 +93,7 @@ fn res_name_parser(res: &HashMap<String, String>) -> HashMap::<ResType, String> 
 }
 
 fn download_res(res_urls: HashMap::<ResType, String>) {
-    for (res_type, url) in res_urls {
+    for (_res_type, _url) in res_urls {
         // download
     }
 }
@@ -103,45 +105,43 @@ struct ResPackInfo {
     name: String,
     author: String,
 
-    hit_fx: (u32, u32),
-    #[serde(default = "default_duration")]
-    hit_fx_duration: f32,
-    #[serde(default = "default_scale")]
-    hit_fx_scale: f32,
-    #[serde(default)]
-    hit_fx_rotate: bool,
-    #[serde(default)]
-    hide_particles: bool,
-    #[serde(default = "default_tinted")]
-    hit_fx_tinted: bool,
+    // hit_fx: (u32, u32),
+    // #[serde(default = "default_duration")]
+    // hit_fx_duration: f32,
+    // #[serde(default = "default_scale")]
+    // hit_fx_scale: f32,
+    // #[serde(default)]
+    // hit_fx_rotate: bool,
+    // #[serde(default)]
+    // hide_particles: bool,
+    // #[serde(default = "default_tinted")]
+    // hit_fx_tinted: bool,
 
-    hold_atlas: (u32, u32),
-    #[serde(rename = "holdAtlasMH")]
-    hold_atlas_mh: (u32, u32),
+    // hold_atlas: (u32, u32),
+    // #[serde(rename = "holdAtlasMH")]
+    // hold_atlas_mh: (u32, u32),
 
-    #[serde(default)]
-    hold_keep_head: bool,
-    #[serde(default)]
-    hold_repeat: bool,
-    #[serde(default)]
-    hold_compact: bool,
+    // #[serde(default)]
+    // hold_keep_head: bool,
+    // #[serde(default)]
+    // hold_repeat: bool,
+    // #[serde(default)]
+    // hold_compact: bool,
 
-    #[serde(default = "default_perfect")]
-    color_perfect: u32,
-    #[serde(default = "default_good")]
-    color_good: u32,
+    // #[serde(default = "default_perfect")]
+    // color_perfect: u32,
+    // #[serde(default = "default_good")]
+    // color_good: u32,
 
-    #[serde(default)]
+    // #[serde(default)]
     description: String,
 }
 fn generate_respack_info(meta: PTRespackMeta) -> ResPackInfo {
-    let mut respack_info = ResPackInfo::new();
-
-    respack_info.name = meta.name;
-    respack_info.author = meta.author;
-    // respack_info.description = "Generated from {}".to_string();
-
-    respack_info
+    ResPackInfo {
+        name: meta.name,
+        author: meta.author,
+        description: String::new(),
+    }
 }
 
 fn main() {
