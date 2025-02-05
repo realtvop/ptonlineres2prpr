@@ -51,6 +51,7 @@ enum ResType {
 }
 fn res_name_parser(res: &HashMap<String, String>) -> HashMap::<ResType, String> {
     let mut res_urls = HashMap::<ResType, String>::new();
+
     for (i, url) in res {
         let i_lowercase = i.to_lowercase();
         if ["clickraw", "clickraw.png"].contains(&i_lowercase.as_str()) {
@@ -85,10 +86,63 @@ fn res_name_parser(res: &HashMap<String, String>) -> HashMap::<ResType, String> 
             res_urls.insert(ResType::Audio(AudioResType::FlickHitSound), url.clone());
         }
     }
+
     res_urls
 }
 
+fn download_res(res_urls: HashMap::<ResType, String>) {
+    for (res_type, url) in res_urls {
+        // download
+    }
+}
 
+#[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// from prpr/src/core/resource.rs, may be replaced in the future
+struct ResPackInfo {
+    name: String,
+    author: String,
+
+    hit_fx: (u32, u32),
+    #[serde(default = "default_duration")]
+    hit_fx_duration: f32,
+    #[serde(default = "default_scale")]
+    hit_fx_scale: f32,
+    #[serde(default)]
+    hit_fx_rotate: bool,
+    #[serde(default)]
+    hide_particles: bool,
+    #[serde(default = "default_tinted")]
+    hit_fx_tinted: bool,
+
+    hold_atlas: (u32, u32),
+    #[serde(rename = "holdAtlasMH")]
+    hold_atlas_mh: (u32, u32),
+
+    #[serde(default)]
+    hold_keep_head: bool,
+    #[serde(default)]
+    hold_repeat: bool,
+    #[serde(default)]
+    hold_compact: bool,
+
+    #[serde(default = "default_perfect")]
+    color_perfect: u32,
+    #[serde(default = "default_good")]
+    color_good: u32,
+
+    #[serde(default)]
+    description: String,
+}
+fn generate_respack_info(meta: PTRespackMeta) -> ResPackInfo {
+    let mut respack_info = ResPackInfo::new();
+
+    respack_info.name = meta.name;
+    respack_info.author = meta.author;
+    // respack_info.description = "Generated from {}".to_string();
+
+    respack_info
+}
 
 fn main() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
