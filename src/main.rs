@@ -1,6 +1,11 @@
 use reqwest::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use bytes::Bytes;
 
 const PTRESPACK_META_URL: &str = "https://pgres4pt.realtvop.top";
 
@@ -92,10 +97,79 @@ fn res_name_parser(res: &HashMap<String, String>) -> HashMap<ResType, String> {
     res_urls
 }
 
-fn download_res(res_urls: HashMap::<ResType, String>) {
-    for (_res_type, _url) in res_urls {
-        // download
+async fn ensure_directories() -> std::io::Result<()> {
+    fs::create_dir_all("output")?;
+    Ok(())
+}
+
+async fn download_file(client: &reqwest::Client, url: &str) -> Result<bytes::Bytes, Error> {
+    let response = client.get(url).send().await?;
+    let bytes = response.bytes().await?;
+    Ok(bytes)
+}
+
+async fn save_file(path: &Path, contents: bytes::Bytes) -> std::io::Result<()> {
+    let mut file = File::create(path).await?;
+    file.write_all(&contents).await?;
+    Ok(())
+}
+
+fn get_filename(res_type: &ResType) -> &'static str {
+    match res_type {
+        ResType::Image(img_type) => match img_type {
+            ImageResType::HitFX => "hit_fx.png",
+            ImageResType::Tap => "click.png",
+            ImageResType::TapHL => "click_mh.png",
+            ImageResType::HoldEnd => "holdend.png",
+            ImageResType::Hold => "hold.png",
+            ImageResType::HoldHL => "holdhl.png",
+            ImageResType::HoldHead => "holdhead.png",
+            ImageResType::HoldHeadHL => "holdheadhl.png",
+            ImageResType::Drag => "drag.png",
+            ImageResType::DragHL => "draghl.png",
+            ImageResType::Flick => "flick.png",
+            ImageResType::FlickHL => "flickhl.png",
+        },
+        ResType::Audio(audio_type) => match audio_type {
+            AudioResType::TapHitSound => "hitsong0.ogg",
+            AudioResType::DragHitSound => "hitsong1.ogg",
+            AudioResType::FlickHitSound => "hitsong2.ogg",
+        },
     }
+}
+
+struct DownloadResult {
+    res_type: ResType,
+    content: Bytes,
+}
+
+async fn download_res(res_urls: HashMap<ResType, String>) -> Result<Vec<DownloadResult>, Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let mut downloaded = Vec::new();
+
+    for (res_type, url) in res_urls {
+        let bytes = download_file(&client, &url).await?;
+        downloaded.push(DownloadResult {
+            res_type,
+            content: bytes,
+        });
+        println!("Downloaded: {}", url);
+    }
+
+    Ok(downloaded)
+}
+
+async fn save_res(downloads: Vec<DownloadResult>) -> Result<(), Box<dyn std::error::Error>> {
+    ensure_directories().await?;
+
+    for res in downloads {
+        let filename = get_filename(&res.res_type);
+        let filepath = Path::new("output").join(filename);
+        save_file(&filepath, res.content).await?;
+        println!("Saved: {}", filepath.display());
+    }
+
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -150,8 +224,17 @@ fn main() {
     match runtime.block_on(fetch_meta(PTRESPACK_META_URL)) {
         Ok(meta) => {
             println!("Fetched metadata:\n{:#?}", meta);
-            // res_name_parser(&meta.res);
-            println!("Parsed res names:\n{:#?}", res_name_parser(&meta.res));
+            let res_urls = res_name_parser(&meta.res);
+            println!("Parsed res names:\n{:#?}", &res_urls);
+            
+            match runtime.block_on(download_res(res_urls)) {
+                Ok(downloaded) => {
+                    if let Err(e) = runtime.block_on(save_res(downloaded)) {
+                        eprintln!("Error saving resources: {}", e);
+                    }
+                }
+                Err(e) => eprintln!("Error downloading resources: {}", e),
+            }
         },
         Err(e) => eprintln!("Error occurred: {}", e),
     }

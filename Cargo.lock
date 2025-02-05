@@ -716,6 +716,7 @@ dependencies = [
 name = "ptonlineres2prpr"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "reqwest",
  "serde",
  "serde_json",
